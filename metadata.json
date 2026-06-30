@@ -1,0 +1,6 @@
+{
+  "name": "Malaysian Industrial Court Legal Assistant",
+  "description": "An AI-powered legal assistant agent utilizing the Google ADK and Gemini for searching Malaysian Industrial Court awards and generating legal templates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
