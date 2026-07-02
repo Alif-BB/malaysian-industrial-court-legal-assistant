@@ -6,7 +6,10 @@ Powered by google-adk (Google Agent Development Kit) and Gemini.
 from typing import Optional, List
 import os
 from pydantic import BaseModel, Field
-from google_adk import Agent, Tool, Config
+from google.adk import Agent
+from google.genai import types
+from google.api_core.client_options import ClientOptions
+from google.cloud import discoveryengine_v1 as discoveryengine
 
 # =====================================================================
 # 1. PYDANTIC SCHEMAS
@@ -56,110 +59,104 @@ def search_industrial_awards(criteria: SearchCriteria) -> str:
     """
     Searches the Malaysian Industrial Court legal award corpus.
     
-    This tool simulates/stubs queries against a Google Drive corpus indexed via 
-    Vertex AI RAG (Retrieval-Augmented Generation) Engine. In a live environment,
-    this queries the Vertex AI search endpoint and returns relevant passages.
-
-    Args:
-        criteria: A structured SearchCriteria object containing the parsed fields.
-        
-    Returns:
-        A Markdown formatted response showing the search results or relevant 
-        excerpts found in the legal corpus.
+    Queries the live Vertex AI Search endpoint connected recursively to your Cloud Storage bucket.
+    If the project or data store configuration is missing, it returns a descriptive configuration guide.
     """
-    # Simulate a set of historic awards stored in Google Drive
-    mock_corpus = [
-        {
-            "award_number": "104 of 2024",
-            "case_number": "22/4-1102/23",
-            "claimant": "Ahmad Bin Razali",
-            "respondent": "Mega Global Tech Sdn Bhd",
-            "case_code": "22",
-            "case_year": 2024,
-            "facts": "Claimant was summarily dismissed for alleged poor performance without a prior performance improvement plan (PIP) or written warnings.",
-            "held": "Dismissal without just cause or excuse. The court held that the Respondent failed to establish poor performance in accordance with the established legal standards. Standard criteria in Malaysian Industrial Law (e.g., in the case of IE Project Sdn Bhd v. Tan Lee Seng [1987]) requires clear notice of performance standards, feedback/warning, and a reasonable opportunity to improve.",
-            "remedy": "Backwages of 24 months (subject to 20% mitigation deduction for post-dismissal income) and compensation in lieu of reinstatement of 1 month salary for each year of completed service (5 years total)."
-        },
-        {
-            "award_number": "315 of 2025",
-            "case_number": "12/2-402/24",
-            "claimant": "Sarah Elizabeth Jenkins",
-            "respondent": "Nusantara Logistics Berhad",
-            "case_code": "12",
-            "case_year": 2025,
-            "facts": "Claimant claimed constructive dismissal. The Respondent unilaterally removed her company car benefit and reassigned her core duties to a newly hired manager, effectively demoting her without her consent.",
-            "held": "Constructive dismissal established. The court applied the contract test outlined in Wong Chee Hong v. Lim Seng Seng [1983] 1 MLJ 35. The unilateral alteration of the contract terms and reassignment of key functions went to the root of the contract of employment, showing that the employer no longer intended to be bound by the contract.",
-            "remedy": "Reinstatement ordered, or alternatively, backwages of 24 months and 8 years compensation in lieu of reinstatement."
-        },
-        {
-            "award_number": "042 of 2026",
-            "case_number": "22/4-901/25",
-            "claimant": "Tan Kok Seng & 14 Others",
-            "respondent": "Eastern Manufacturing Berhad",
-            "case_code": "22",
-            "case_year": 2026,
-            "facts": "A collective dismissal under the guise of retrenchment due to reorganization. The Claimants argued that the LIFO (Last In, First Out) principle was violated, and that foreign workers were retained while senior Malaysian workers were dismissed.",
-            "held": "Dismissal without just cause or excuse. The Court found that while redundancy was genuine due to economic downturn, the selection process violated the Code of Conduct for Industrial Harmony 1975, specifically violating the LIFO principle without valid reasons, making the retrenchment subjective and unfair.",
-            "remedy": "Redundancy benefits recalculated in accordance with Employment Regulations, plus backwages capped at 24 months."
-        }
-    ]
+    project_id = os.getenv("GCP_PROJECT_ID")
+    location = os.getenv("GCP_LOCATION", "global")
+    data_store_id = os.getenv("VERTEX_SEARCH_DATA_STORE_ID")
+    serving_config_id = "default_search"
 
-    # Perform simple matching to simulate RAG retrieval
-    matches = []
-    for item in mock_corpus:
-        match = True
-        
-        if criteria.claimant_or_union and criteria.claimant_or_union.lower() not in item["claimant"].lower():
-            match = False
-        if criteria.respondent and criteria.respondent.lower() not in item["respondent"].lower():
-            match = False
-        if criteria.award_number and criteria.award_number not in item["award_number"]:
-            match = False
-        if criteria.case_number and criteria.case_number not in item["case_number"]:
-            match = False
-        if criteria.case_code and criteria.case_code != item["case_code"]:
-            match = False
-        if criteria.case_year and criteria.case_year != item["case_year"]:
-            match = False
-        if criteria.keyword_summary:
-            keywords = criteria.keyword_summary.lower().split()
-            found_keyword = False
-            for kw in keywords:
-                if kw in item["facts"].lower() or kw in item["held"].lower():
-                    found_keyword = True
-            if not found_keyword:
-                match = False
-                
-        if match:
-            matches.append(item)
-
-    if not matches:
+    if not project_id or not data_store_id:
         return (
-            "### Vertex AI RAG Corpus Query Output\n\n"
-            "**No direct matching court awards found in the database.**\n"
-            "Showing broader semantic matches for search criteria:\n"
-            f"- Claimant/Union: `{criteria.claimant_or_union or 'Any'}`\n"
-            f"- Respondent: `{criteria.respondent or 'Any'}`\n"
-            f"- Award No: `{criteria.award_number or 'Any'}`\n\n"
-            "**Standard Legal Precedent Guidance:** Under Section 20 of the Malaysian Industrial Relations Act 1967, "
-            "the burden of proof lies on the employer to prove on a balance of probabilities that the dismissal of "
-            "the employee was with just cause or excuse."
+            "### Connection Configuration Guide\n\n"
+            "The Malaysian Industrial Court Legal Assistant agent is ready to search your live GCS-backed Vertex AI Search Data Store, "
+            "but the environment configuration is not yet complete.\n\n"
+            "**How to configure:**\n"
+            "1. Open your project's `.env` file at `/Users/mohdalifridzuanahmad/Documents/imp_docs/Projects/malaysian-industrial-court-legal-assistant/.env`.\n"
+            "2. Fill in the following variables with your Google Cloud credentials:\n"
+            "   ```env\n"
+            "   GCP_PROJECT_ID=\"YOUR_GCP_PROJECT_ID\"\n"
+            "   VERTEX_SEARCH_DATA_STORE_ID=\"YOUR_VERTEX_AI_SEARCH_DATA_STORE_ID\"\n"
+            "   GCP_LOCATION=\"global\"\n"
+            "   ```\n"
+            "3. Make sure to authenticate locally using: `gcloud auth application-default login`"
         )
 
-    # Build response Markdown
-    res_str = f"### Vertex AI RAG Corpus Query Results ({len(matches)} matches found)\n"
-    res_str += "The following records were retrieved from the Google Drive Malaysian Industrial Court Award dataset:\n\n"
-    
-    for idx, match in enumerate(matches, 1):
-        res_str += f"#### {idx}. Award No. {match['award_number']} (Case No: {match['case_number']})\n"
-        res_str += f"**Parties:** *{match['claimant']}* v. *{match['respondent']}*\n"
-        res_str += f"**Case Code/Year:** {match['case_code']} / {match['case_year']}\n"
-        res_str += f"**Background Facts:**\n> {match['facts']}\n\n"
-        res_str += f"**Court's Findings / Decision:**\n> {match['held']}\n\n"
-        res_str += f"**Award / Remedy Granted:**\n> {match['remedy']}\n\n"
-        res_str += "---\n\n"
-        
-    return res_str
+    # Formulate query text based on parsed criteria fields
+    query_parts = []
+    if criteria.claimant_or_union:
+        query_parts.append(criteria.claimant_or_union)
+    if criteria.respondent:
+        query_parts.append(criteria.respondent)
+    if criteria.keyword_summary:
+        query_parts.append(criteria.keyword_summary)
+    if criteria.case_year:
+        query_parts.append(str(criteria.case_year))
+
+    query_text = " ".join(query_parts) if query_parts else "Malaysian Industrial Court Award"
+
+    try:
+        # Configure search client
+        client_options = (
+            ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+            if location != "global"
+            else None
+        )
+        client = discoveryengine.SearchServiceClient(client_options=client_options)
+
+        serving_config = client.serving_config_path(
+            project=project_id,
+            location=location,
+            data_store=data_store_id,
+            serving_config=serving_config_id,
+        )
+
+        # Query the live Vertex AI Search data store
+        request = discoveryengine.SearchRequest(
+            serving_config=serving_config,
+            query=query_text,
+            page_size=5,
+        )
+        response = client.search(request)
+
+        if not response.results:
+            return f"### Vertex AI Search\n\nNo matching documents found in your GCS folder structure for query: *\"{query_text}\"*"
+
+        res_str = f"### Vertex AI Search Results (Cloud Storage Sync)\n"
+        res_str += f"Retrieved documents matching: *\"{query_text}\"*\n\n"
+
+        for idx, result in enumerate(response.results, 1):
+            document = result.document
+            doc_title = "Court Award Document"
+            if document.derived_struct_data:
+                doc_title = document.derived_struct_data.get("title", doc_title)
+
+            snippets = []
+            if document.derived_struct_data and "snippets" in document.derived_struct_data:
+                for s in document.derived_struct_data["snippets"]:
+                    if "snippet" in s:
+                        snippets.append(s["snippet"].replace("<b>", "**").replace("</b>", "**"))
+            
+            excerpt = "\n\n".join(snippets) if snippets else "Context matches found within the document contents."
+
+            res_str += f"#### {idx}. Document: {doc_title}\n"
+            res_str += f"**Matching Passage:**\n"
+            res_str += f"> {excerpt}\n\n"
+            res_str += "---\n\n"
+
+        return res_str
+
+    except Exception as e:
+        return (
+            f"### Error Querying GCP GCS Data Store\n\n"
+            f"**Details:** {str(e)}\n\n"
+            "Please verify that:\n"
+            "1. Your Google Cloud credentials are valid and you have authenticated using: `gcloud auth application-default login`.\n"
+            "2. Your `.env` variables `GCP_PROJECT_ID` and `VERTEX_SEARCH_DATA_STORE_ID` are set correctly.\n"
+            "3. Your Vertex AI Search Data Store exists and has finished indexing the GCS bucket."
+        )
+
 
 
 def generate_industrial_court_template(
@@ -296,17 +293,20 @@ Operational Rules:
 
 # Instantiate the Agent using the Google ADK configuration convention
 IndustrialCourtAgent = Agent(
-    name="Malaysian Industrial Court Legal Assistant",
-    instructions=legal_persona_instructions,
+    name="industrial_court_agent",
+    description="An expert AI legal assistant for Malaysian Industrial Court awards search and drafting.",
+    instruction=legal_persona_instructions,
     tools=[
         search_industrial_awards,
         generate_industrial_court_template
     ],
-    config=Config(
-        model="gemini-2.5-pro", # Defaulting to Pro for advanced legal reasoning and template drafting
-        temperature=0.2          # Low temperature for highly precise, non-hallucinatory legal logic
+    model="gemini-2.5-flash",
+    generate_content_config=types.GenerateContentConfig(
+        temperature=0.2
     )
 )
+
+root_agent = IndustrialCourtAgent
 
 if __name__ == "__main__":
     # Standard entry point to start the agent locally or start the ADK server

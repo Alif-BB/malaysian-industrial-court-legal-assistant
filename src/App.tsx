@@ -51,53 +51,7 @@ interface CourtAward {
   held: string;
   remedy: string;
 }
-
-const SAMPLE_AWARDS: CourtAward[] = [
-  {
-    award_number: "104 of 2024",
-    case_number: "22/4-1102/23",
-    claimant: "Ahmad Bin Razali",
-    respondent: "Mega Global Tech Sdn Bhd",
-    case_code: "22",
-    case_year: 2024,
-    facts: "Claimant was summarily dismissed for alleged poor performance without a prior performance improvement plan (PIP) or written warnings.",
-    held: "Dismissal without just cause or excuse. The court held that the Respondent failed to establish poor performance in accordance with the established legal standards. Standard criteria in Malaysian Industrial Law (e.g., in the case of IE Project Sdn Bhd v. Tan Lee Seng [1987]) requires clear notice of performance standards, feedback/warning, and a reasonable opportunity to improve.",
-    remedy: "Backwages of 24 months (subject to 20% mitigation deduction for post-dismissal income) and compensation in lieu of reinstatement of 1 month salary for each year of completed service (5 years total)."
-  },
-  {
-    award_number: "315 of 2025",
-    case_number: "12/2-402/24",
-    claimant: "Sarah Elizabeth Jenkins",
-    respondent: "Nusantara Logistics Berhad",
-    case_code: "12",
-    case_year: 2025,
-    facts: "Claimant claimed constructive dismissal. The Respondent unilaterally removed her company car benefit and reassigned her core duties to a newly hired manager, effectively demoting her without her consent.",
-    held: "Constructive dismissal established. The court applied the contract test outlined in Wong Chee Hong v. Lim Seng Seng [1983] 1 MLJ 35. The unilateral alteration of the contract terms and reassignment of key functions went to the root of the contract of employment, showing that the employer no longer intended to be bound by the contract.",
-    remedy: "Reinstatement ordered, or alternatively, backwages of 24 months and 8 years compensation in lieu of reinstatement."
-  },
-  {
-    award_number: "042 of 2026",
-    case_number: "22/4-901/25",
-    claimant: "Tan Kok Seng & 14 Others",
-    respondent: "Eastern Manufacturing Berhad",
-    case_code: "22",
-    case_year: 2026,
-    facts: "A collective dismissal under the guise of retrenchment due to reorganization. The Claimants argued that the LIFO (Last In, First Out) principle was violated, and that foreign workers were retained while senior Malaysian workers were dismissed.",
-    held: "Dismissal without just cause or excuse. The Court found that while redundancy was genuine due to economic downturn, the selection process violated the Code of Conduct for Industrial Harmony 1975, specifically violating the LIFO principle without valid reasons, making the retrenchment subjective and unfair.",
-    remedy: "Redundancy benefits recalculated in accordance with Employment Regulations, plus backwages capped at 24 months."
-  },
-  {
-    award_number: "088 of 2026",
-    case_number: "22/4-150/25",
-    claimant: "Vimala Devi a/p Ramasamy",
-    respondent: "Premier Healthcare Group",
-    case_code: "22",
-    case_year: 2026,
-    facts: "Claimant, a probationer, was terminated after 3 months of a 6-month probation period without proper assessment, warnings, or extension notice.",
-    held: "Dismissal without just cause or excuse. Although a probationer does not possess the same status as a confirmed employee, they are still entitled to a reasonable assessment period and guidance under Khaliah binti Abbas v. Majid Holdings Sdn Bhd [1997] 1 MLJ 105. No formal review or guidance was provided.",
-    remedy: "Backwages of 12 months (maximum statutory cap for probationers under the Second Schedule) with a 30% mitigation deduction."
-  }
-];
+// Hardcoded presets removed for real ADK backend integration.
 
 // File contents for the code explorer
 const PYTHON_REQUIREMENTS = `# Core Framework & GenAI SDK
@@ -174,23 +128,23 @@ def search_industrial_awards(criteria: SearchCriteria) -> str:
     """
     Searches the Malaysian Industrial Court legal award corpus.
     
-    This tool simulates/stubs queries against a Google Drive corpus indexed via 
-    Vertex AI RAG (Retrieval-Augmented Generation) Engine. In a live environment,
-    this queries the Vertex AI search endpoint and returns relevant passages.
-
-    Args:
-        criteria: A structured SearchCriteria object containing the parsed fields.
-        
-    Returns:
-        A Markdown formatted response showing the search results or relevant 
-        excerpts found in the legal corpus.
+    Queries the live Vertex AI Search endpoint connected recursively to your Cloud Storage bucket.
+    If the project or data store configuration is missing, it returns a descriptive configuration guide.
     """
-    # Simulate a set of historic awards stored in Google Drive
-    mock_corpus = [
-        # ... (Refer to full mock data in agent.py)
-    ]
-    # Standard matching or Vertex AI RAG call implementation...
-    return "Parsed results from legal corpus..."
+    project_id = os.getenv("GCP_PROJECT_ID")
+    location = os.getenv("GCP_LOCATION", "global")
+    data_store_id = os.getenv("VERTEX_SEARCH_DATA_STORE_ID")
+    serving_config_id = "default_search"
+
+    if not project_id or not data_store_id:
+        return (
+            "### Connection Configuration Guide\\n\\n"
+            "The Malaysian Industrial Court Legal Assistant agent is ready to search your live GCS-backed Vertex AI Search Data Store, "
+            "but the environment configuration is not yet complete..."
+        )
+
+    # Formulate query text and query the live SearchServiceClient...
+    return "Parsed results from Vertex AI search endpoint..."
 
 
 def generate_industrial_court_template(
@@ -349,317 +303,181 @@ export default function App() {
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  // Preset Loaders
-  const loadSearchPreset = (presetIndex: number) => {
-    const selected = SAMPLE_AWARDS[presetIndex];
-    setSearchForm({
-      claimant_or_union: selected.claimant,
-      respondent: selected.respondent,
-      award_number: selected.award_number,
-      case_number: selected.case_number,
-      case_code: selected.case_code,
-      case_year: selected.case_year,
-      keyword_summary: ''
-    });
-    setNaturalLanguageQuery(`Search for cases involving claimant "${selected.claimant}" and respondent "${selected.respondent}"`);
-  };
-
-  const loadDraftPreset = (presetIndex: number) => {
-    const selected = SAMPLE_AWARDS[presetIndex];
-    setDraftForm({
-      claimant: selected.claimant,
-      respondent: selected.respondent,
-      case_number: selected.case_number,
-      facts: selected.facts,
-      decision_summary: selected.held
-    });
-  };
-
   // =====================================================================
-  // CORE LOGIC SIMULATION
+  // REAL ADK BACKEND API INTEGRATION
   // =====================================================================
 
-  // Natural Language Parser Simulation (converts NL text to SearchCriteria fields)
-  const handleNaturalLanguageParse = () => {
-    if (!naturalLanguageQuery.trim()) return;
-    setIsParsingNL(true);
-    
-    // Simulate ADK's LLM parser reasoning
-    setTimeout(() => {
-      const q = naturalLanguageQuery.toLowerCase();
-      let parsed: SearchCriteria = {
-        claimant_or_union: '',
-        respondent: '',
-        award_number: '',
-        case_number: '',
-        case_code: '22',
-        case_year: undefined,
-        keyword_summary: ''
-      };
+  const runAgentQuery = async (queryText: string) => {
+    setIsAgentTyping(true);
+    const timestamp = new Date();
 
-      // Simple heuristic simulation
-      if (q.includes("ahmad") || q.includes("razali")) {
-        parsed.claimant_or_union = "Ahmad Bin Razali";
-        parsed.respondent = "Mega Global Tech Sdn Bhd";
-        parsed.case_year = 2024;
-        parsed.award_number = "104 of 2024";
-      } else if (q.includes("sarah") || q.includes("jenkins")) {
-        parsed.claimant_or_union = "Sarah Elizabeth Jenkins";
-        parsed.respondent = "Nusantara Logistics Berhad";
-        parsed.case_year = 2025;
-      } else if (q.includes("tan kok seng") || q.includes("retrenchment")) {
-        parsed.claimant_or_union = "Tan Kok Seng";
-        parsed.respondent = "Eastern Manufacturing Berhad";
-        parsed.keyword_summary = "retrenchment lifo";
-        parsed.case_year = 2026;
-      } else if (q.includes("vimala") || q.includes("probationer")) {
-        parsed.claimant_or_union = "Vimala Devi";
-        parsed.respondent = "Premier Healthcare Group";
-        parsed.keyword_summary = "probationer";
-        parsed.case_year = 2026;
-      } else {
-        // Fallback matching
-        parsed.keyword_summary = naturalLanguageQuery;
+    try {
+      // Direct call to the local ADK FastAPI server
+      const response = await fetch('http://127.0.0.1:8082/run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: 'default_user',
+          sessionId: 'default_user_session',
+          newMessage: {
+            role: 'user',
+            parts: [{ text: queryText }]
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server status ${response.status}: ${response.statusText}`);
       }
 
-      setSearchForm(parsed);
-      setIsParsingNL(false);
-      
-      // Inject system steps in chat to show the user how ADK parsed it
-      triggerAgentToolflowLog("parse_query", {
-        raw_query: naturalLanguageQuery,
-        extracted_criteria: parsed
-      });
-    }, 850);
-  };
+      const events = await response.json();
+      let assistantResponseText = '';
+      const stepLogs: ChatMessage[] = [];
 
-  // Helper to trigger ADK execution steps in chat log
-  const triggerAgentToolflowLog = (action: 'parse_query' | 'search_tool' | 'draft_tool', payload: any) => {
-    const timestamp = new Date();
-    
-    if (action === 'parse_query') {
-      const logs: ChatMessage[] = [
-        {
-          id: `log-p1-${Date.now()}`,
-          sender: 'system_log',
-          text: `[ADK ORCHESTRATION] Passing raw string to Gemini 2.5 Flash for SearchCriteria parsing...`,
-          timestamp
-        },
-        {
-          id: `log-p2-${Date.now()}`,
-          sender: 'system_log',
-          text: `[ADK Pydantic Validator] Extracted schema successfully:\n\n` + 
-                `{\n` +
-                `  "claimant_or_union": "${payload.extracted_criteria.claimant_or_union || 'null'}",\n` +
-                `  "respondent": "${payload.extracted_criteria.respondent || 'null'}",\n` +
-                `  "case_year": ${payload.extracted_criteria.case_year || 'null'},\n` +
-                `  "keyword_summary": "${payload.extracted_criteria.keyword_summary || 'null'}"\n` +
-                `}`,
-          timestamp
+      for (const event of events) {
+        // Log function call executions (ADK Tool flow)
+        if (event.content?.parts?.[0]?.functionCall) {
+          const fc = event.content.parts[0].functionCall;
+          stepLogs.push({
+            id: `log-fc-${Date.now()}-${Math.random()}`,
+            sender: 'system_log',
+            text: `[ADK TOOL INVOKE] Triggered function '${fc.name}' with parsed criteria:`,
+            timestamp: new Date(),
+            metadata: { tool_name: fc.name, parameters: fc.args }
+          });
         }
-      ];
-      setChatMessages(prev => [...prev, ...logs]);
-    } else if (action === 'search_tool') {
-      const logs: ChatMessage[] = [
-        {
-          id: `log-s1-${Date.now()}`,
-          sender: 'system_log',
-          text: `[ADK TOOL INVOKE] Triggered function 'search_industrial_awards' with criteria:`,
-          timestamp,
-          metadata: { tool_name: 'search_industrial_awards', parameters: payload }
-        },
-        {
-          id: `log-s2-${Date.now()}`,
-          sender: 'system_log',
-          text: `[Vertex AI RAG Engine] Querying synced Google Drive folder... Excerpts identified from PDF database.`,
-          timestamp
+
+        // Log function responses (ADK Tool results)
+        if (event.content?.parts?.[0]?.functionResponse) {
+          const fr = event.content.parts[0].functionResponse;
+          const resultText = typeof fr.response?.result === 'string'
+            ? fr.response.result
+            : JSON.stringify(fr.response?.result);
+
+          stepLogs.push({
+            id: `log-fr-${Date.now()}-${Math.random()}`,
+            sender: 'system_log',
+            text: `[ADK Tool Output] Successfully fetched data store records matching query.`,
+            timestamp: new Date()
+          });
         }
-      ];
-      setChatMessages(prev => [...prev, ...logs]);
-    } else if (action === 'draft_tool') {
-      const logs: ChatMessage[] = [
-        {
-          id: `log-d1-${Date.now()}`,
-          sender: 'system_log',
-          text: `[ADK TOOL INVOKE] Triggered function 'generate_industrial_court_template' with case data:`,
-          timestamp,
-          metadata: { tool_name: 'generate_industrial_court_template', parameters: payload }
-        },
-        {
-          id: `log-d2-${Date.now()}`,
-          sender: 'system_log',
-          text: `[ADK Generative Draft] Conforming format to Malaysian Industrial Court award standards. Handing output back to user.`,
-          timestamp
+
+        // Collect model text parts
+        if (event.content?.parts?.[0]?.text) {
+          assistantResponseText += event.content.parts[0].text;
         }
-      ];
-      setChatMessages(prev => [...prev, ...logs]);
+      }
+
+      // Append any orchestration logs to the chat
+      if (stepLogs.length > 0) {
+        setChatMessages(prev => [...prev, ...stepLogs]);
+      }
+
+      // Append final model response
+      if (assistantResponseText) {
+        setChatMessages(prev => [...prev, {
+          id: `agent-res-${Date.now()}`,
+          sender: 'agent',
+          text: assistantResponseText,
+          timestamp: new Date()
+        }]);
+
+        // Smart Extraction: Parse response for Malaysian Industrial Court Award templates
+        let docMarkdown = assistantResponseText;
+        if (docMarkdown.includes('```')) {
+          const blockMatch = docMarkdown.match(/```(?:markdown)?([\s\S]+?)```/);
+          if (blockMatch && blockMatch[1] && (blockMatch[1].includes('# INDUSTRIAL COURT') || blockMatch[1].includes('# IN THE INDUSTRIAL COURT'))) {
+            docMarkdown = blockMatch[1];
+          }
+        }
+
+        if (docMarkdown.includes('# INDUSTRIAL COURT') || docMarkdown.includes('# IN THE INDUSTRIAL COURT')) {
+          let title = "Conformed Court Award";
+          const lines = docMarkdown.split('\n');
+          for (const line of lines) {
+            if (line.includes('BETWEEN') || line.includes('AWARD NO:')) {
+              title = line.replace(/\*\*/g, '').replace('###', '').trim() || title;
+              break;
+            }
+          }
+          setViewedDocumentTitle(title);
+          setViewedDocumentMarkdown(docMarkdown);
+        }
+      } else {
+        setChatMessages(prev => [...prev, {
+          id: `agent-res-empty-${Date.now()}`,
+          sender: 'agent',
+          text: "I completed the run successfully but no text response was returned. This may mean the RAG database search executed successfully. Check the execution logs above.",
+          timestamp: new Date()
+        }]);
+      }
+
+    } catch (error: any) {
+      console.error("ADK Backend error:", error);
+      setChatMessages(prev => [...prev, {
+        id: `agent-error-${Date.now()}`,
+        sender: 'agent',
+        text: `### ⚠️ Connection to ADK Server Failed\n\nUnable to communicate with the local legal assistant backend at \`http://127.0.0.1:8082\`.\n\n**Details:** ${error.message}\n\n**To resolve this:**\n1. Make sure the ADK FastAPI server is running locally on port \`8082\`.\n2. Ensure your terminal is authenticated to Google Cloud by running:\n   \`gcloud auth application-default login\`\n3. Verify your \`.env\` file has valid GCS Data Store and GCP Project IDs configured correctly.`,
+        timestamp: new Date()
+      }]);
+    } finally {
+      setIsAgentTyping(false);
     }
   };
 
-  // Run Simulated Search via the form
+  // Natural Language Search Parser Input Handler
+  const handleNaturalLanguageParse = () => {
+    if (!naturalLanguageQuery.trim()) return;
+    setIsParsingNL(true);
+
+    const promptText = `Find Malaysian Industrial Court awards in the Vertex AI Search database matching this natural language request: "${naturalLanguageQuery}". Use the search tool to extract matching awards.`;
+    
+    // Set search form criteria field to indicate parsing activity
+    setSearchForm(prev => ({ ...prev, keyword_summary: naturalLanguageQuery }));
+    
+    setTimeout(() => {
+      setIsParsingNL(false);
+      runAgentQuery(promptText);
+    }, 600);
+  };
+
+  // Run Real Search via GCS Synced Data Store
   const handleRunSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    setIsAgentTyping(true);
 
-    // Logs before responding
-    triggerAgentToolflowLog('search_tool', searchForm);
+    // Construct structured prompt for ADK agent to parse into SearchCriteria
+    const criteriaParts: string[] = [];
+    if (searchForm.claimant_or_union) criteriaParts.push(`Claimant/Union Name is "${searchForm.claimant_or_union}"`);
+    if (searchForm.respondent) criteriaParts.push(`Respondent Name is "${searchForm.respondent}"`);
+    if (searchForm.award_number) criteriaParts.push(`Award Number is "${searchForm.award_number}"`);
+    if (searchForm.case_number) criteriaParts.push(`Case Number is "${searchForm.case_number}"`);
+    if (searchForm.case_year) criteriaParts.push(`Case Year is "${searchForm.case_year}"`);
+    if (searchForm.keyword_summary) criteriaParts.push(`Keywords are "${searchForm.keyword_summary}"`);
 
-    setTimeout(() => {
-      // Find matches in SAMPLE_AWARDS
-      const matches = SAMPLE_AWARDS.filter(award => {
-        let match = true;
-        if (searchForm.claimant_or_union && !award.claimant.toLowerCase().includes(searchForm.claimant_or_union.toLowerCase())) match = false;
-        if (searchForm.respondent && !award.respondent.toLowerCase().includes(searchForm.respondent.toLowerCase())) match = false;
-        if (searchForm.award_number && !award.award_number.includes(searchForm.award_number)) match = false;
-        if (searchForm.case_number && !award.case_number.includes(searchForm.case_number)) match = false;
-        if (searchForm.case_year && award.case_year !== Number(searchForm.case_year)) match = false;
-        return match;
-      });
+    const criteriaString = criteriaParts.length > 0 
+      ? criteriaParts.join(", ") 
+      : "general Malaysian industrial relations";
 
-      let responseText = '';
-      if (matches.length > 0) {
-        responseText = `### Vertex AI RAG Corpus Query Results (${matches.length} matches found)\n`;
-        responseText += `I have fetched these matching court awards from your Google Drive sync:\n\n`;
-        matches.forEach((m, idx) => {
-          responseText += `#### ${idx + 1}. Award No. ${m.award_number} (Case No: ${m.case_number})\n`;
-          responseText += `**Parties:** *${m.claimant}* v. *${m.respondent}*\n`;
-          responseText += `**Background Facts:**\n> ${m.facts}\n\n`;
-          responseText += `**Holding:**\n> ${m.held}\n\n`;
-          responseText += `**Remedy Granted:**\n> ${m.remedy}\n\n`;
-          responseText += `*Click "View Document" in the dashboard to load this full template.* \n\n---\n\n`;
-        });
-      } else {
-        responseText = `### Vertex AI RAG Corpus Query Output\n\n**No exact matches found.**\n\nHowever, in compliance with general standards under Section 20 of the Malaysian Industrial Relations Act 1967, employers bear the burden of proving that dismissals were executed with just cause or excuse.\n\nWould you like me to draft an Award template for this case?`;
-      }
-
-      setChatMessages(prev => [...prev, {
-        id: `search-res-${Date.now()}`,
-        sender: 'agent',
-        text: responseText,
-        timestamp: new Date()
-      }]);
-      setIsAgentTyping(false);
-
-      if (matches.length > 0) {
-        // Automatically load the first match into the document viewer
-        const selected = matches[0];
-        loadDocumentIntoViewer(selected);
-      }
-    }, 1200);
+    const promptText = `Search the Malaysian Industrial Court award database using the search tool for cases matching these specific parameters: ${criteriaString}. Present the retrieved passage snippets and their court titles clearly in your final response.`;
+    
+    runAgentQuery(promptText);
   };
 
-  // Convert an award record into the formal Markdown document
-  const generateFormalAwardMarkdown = (claimant: string, respondent: string, case_num: string, facts: string, decision: string, awardYear: string = "2026") => {
-    return `# IN THE INDUSTRIAL COURT OF MALAYSIA
-
-**AWARD NO: [   ] OF ${awardYear}**
-
----
-
-### IN THE MATTER OF THE INDUSTRIAL RELATIONS ACT 1967
-### AND
-### IN THE MATTER OF A REFERENCE UNDER SECTION 20(3) OF THE ACT
-
-**BETWEEN**
-
-**${claimant.toUpperCase()}**  
-*(hereinafter referred to as "the Claimant")*
-
-**AND**
-
-**${respondent.toUpperCase()}**  
-*(hereinafter referred to as "the Respondent")*
-
----
-
-### PANEL OF THE COURT:
-* **Chairman:** Yang Arif Dato' Sri Haji Harun Al-Rashid
-* **Venue:** Industrial Court of Malaysia, Kuala Lumpur Division
-
----
-
-## AWARD
-
-### 1. INTRODUCTION
-This is a reference made under **Section 20(3) of the Industrial Relations Act 1967** arising out of the dismissal of **${claimant}** ("the Claimant") by **${respondent}** ("the Respondent") on the grounds of alleged dismissal without just cause or excuse.
-
-### 2. BACKGROUND FACTS
-${facts}
-
-### 3. THE LAW AND EVALUATION OF EVIDENCE
-The function of the Industrial Court under Section 20 of the Industrial Relations Act 1967 is twofold:
-1. To determine whether the misconduct/performance issue alleged by the employer has been proven.
-2. To determine whether that proven misconduct or reason constitutes "just cause or excuse" for the dismissal.
-
-The standard of proof required is a **balance of probabilities** (*Goonesinha v. O.L. Yeoh [1975] 1 MLJ 43*). The burden of proof rests entirely on the Respondent employer (*Milan Auto Sdn. Bhd. v. Wong Yeh [1995] 3 MLJ 537*).
-
-### 4. COURT'S FINDINGS AND DECISION
-${decision}
-
-Based on the evidence adduced both oral and documentary, the Court finds that the Respondent has failed to discharge its burden of proving just cause or excuse. 
-
-### 5. REMEDY & FINAL ORDER
-Pursuant to the **Second Schedule of the Industrial Relations Act 1967**:
-* **Backwages:** Capped at 24 months for confirmed employees (12 months for probationers) from date of dismissal, subject to deduction for mitigation of damages and post-dismissal earnings.
-* **Compensation in lieu of Reinstatement:** Standard practice is 1 month's salary for each completed year of service.
-
-**THE COURT HEREBY ORDERS:**
-1. The Respondent to pay the Claimant a total sum calculated as follows:
-   * *Backwages:* 24 months x RM [Salary] = **RM [Calculated Backwages]** (subject to deduction for mitigation).
-   * *Compensation in lieu of Reinstatement:* 1 month's salary for each completed year of service.
-2. Subject to statutory deductions for EPF and SOCSO.
-
-**HANDED DOWN AND DATED THIS [  ] DAY OF [MONTH], {year}.**
-
-*(Yang Arif Chairman)*  
-**Chairman**  
-*Industrial Court of Malaysia*`;
-  };
-
-  const loadDocumentIntoViewer = (award: CourtAward) => {
-    setViewedDocumentTitle(`Award No. ${award.award_number}`);
-    const markdown = generateFormalAwardMarkdown(
-      award.claimant,
-      award.respondent,
-      award.case_number,
-      award.facts,
-      award.held,
-      String(award.case_year)
-    );
-    setViewedDocumentMarkdown(markdown);
-  };
-
-  // Run Simulated Award Drafting (Core Feature 2)
+  // Run Real Generative Award Drafting
   const handleRunDraft = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsAgentTyping(true);
 
-    // Logs before responding
-    triggerAgentToolflowLog('draft_tool', draftForm);
+    const promptText = `Generate a conformed, professionally styled Malaysian Industrial Court Award template using the drafting tool based on the following case data:\n` +
+      `- Claimant: ${draftForm.claimant}\n` +
+      `- Respondent: ${draftForm.respondent}\n` +
+      `- Case Reference Number: ${draftForm.case_number}\n` +
+      `- Facts of Dispute: ${draftForm.facts}\n` +
+      `- Court Findings & Decision: ${draftForm.decision_summary}\n\n` +
+      `Make sure the tool returns standard legal boilerplate under Section 20(3) of the Industrial Relations Act 1967.`;
 
-    setTimeout(() => {
-      const formalMarkdown = generateFormalAwardMarkdown(
-        draftForm.claimant,
-        draftForm.respondent,
-        draftForm.case_number,
-        draftForm.facts,
-        draftForm.decision_summary,
-        "2026"
-      );
-
-      setViewedDocumentTitle(`Draft Award: ${draftForm.claimant} v. ${draftForm.respondent}`);
-      setViewedDocumentMarkdown(formalMarkdown);
-
-      const agentResponse = `### Draft Court Award Generated successfully!\n\nI have successfully invoked the tool \`generate_industrial_court_template\` conforming to standard legal layouts and administrative precedents under the Malaysian Industrial Relations Act 1967.\n\n* **Parties:** *${draftForm.claimant}* v. *${draftForm.respondent}*\n* **Case Reference:** \`${draftForm.case_number}\`\n\nYou can now examine, edit, copy, or print the beautifully rendered formal document in the **Parchment Award Viewer** located on the right side of your dashboard.`;
-
-      setChatMessages(prev => [...prev, {
-        id: `draft-res-${Date.now()}`,
-        sender: 'agent',
-        text: agentResponse,
-        timestamp: new Date()
-      }]);
-      setIsAgentTyping(false);
-    }, 1500);
+    runAgentQuery(promptText);
   };
 
   // Conversational Chat Handler
@@ -670,7 +488,7 @@ Pursuant to the **Second Schedule of the Industrial Relations Act 1967**:
     const userMsg = chatInput;
     setChatInput('');
 
-    // Add user message to chat
+    // Add user message to chat state
     setChatMessages(prev => [...prev, {
       id: `user-msg-${Date.now()}`,
       sender: 'user',
@@ -678,60 +496,13 @@ Pursuant to the **Second Schedule of the Industrial Relations Act 1967**:
       timestamp: new Date()
     }]);
 
-    setIsAgentTyping(true);
+    runAgentQuery(userMsg);
+  };
 
-    // Simulate Agent processing
-    setTimeout(() => {
-      const q = userMsg.toLowerCase();
-      let reply = '';
-
-      if (q.includes("constructive dismissal") || q.includes("wong chee hong")) {
-        triggerAgentToolflowLog('search_tool', { keyword_summary: "constructive dismissal" });
-        reply = `### Constructive Dismissal Precedents & Legal Standard\n\nIn Malaysia, constructive dismissal occurs when an employer commits a fundamental breach of contract going to the root of the employment relationship, forcing the employee to resign.\n\n**The Governing Precedent:**\nIn the landmark Federal Court case of **Wong Chee Hong v. Lim Seng Seng [1983] 1 MLJ 35**, it was held that the "contract test" must be applied. The employee must prove:\n1. The employer was guilty of a breach going to the root of the contract of employment.\n2. The employee resigned in response to that breach, not for some other reason.\n3. The employee acted promptly.\n\n**Typical Examples:**\n* Unilateral salary reduction.\n* Demotion in status, duties, or reporting line.\n* Subjecting the employee to hostile/humiliating work environments without basis.\n\nI have retrieved Award **315 of 2025 (Sarah Jenkins v. Nusantara Logistics Berhad)** which perfectly exemplifies a constructive dismissal scenario based on salary benefit alteration. I have loaded this case into the dashboard for your review.`;
-        loadDocumentIntoViewer(SAMPLE_AWARDS[1]);
-      } else if (q.includes("poor performance") || q.includes("performance improvement")) {
-        triggerAgentToolflowLog('search_tool', { keyword_summary: "poor performance" });
-        reply = `### Standard for Performance-Related Dismissals\n\nUnder Malaysian Industrial Relations jurisprudence, the standard required to lawfully dismiss an employee for poor performance is highly stringent.\n\n**The Governing Precedent:**\nAs established in **IE Project Sdn Bhd v. Tan Lee Seng [1987] 1 ILR 165**, the employer must satisfy three criteria:\n1. The employee was made aware of their performance gaps/standards.\n2. The employee was given adequate opportunity to improve (e.g., a formal Performance Improvement Plan (PIP)).\n3. Despite warnings and opportunities, the employee failed to meet the standards.\n\nI have retrieved Award **104 of 2024 (Ahmad Bin Razali v. Mega Global Tech Sdn Bhd)** where summary dismissal for performance was ruled unfair due to lack of standard warning/PIP. Check the Parchment Award Viewer to inspect this case.`;
-        loadDocumentIntoViewer(SAMPLE_AWARDS[0]);
-      } else if (q.includes("retrenchment") || q.includes("lifo") || q.includes("redundancy")) {
-        triggerAgentToolflowLog('search_tool', { keyword_summary: "retrenchment lifo" });
-        reply = `### Redundancy & Retrenchment Standards\n\nFor a retrenchment to be considered fair, the redundancy must be genuine, and the selection of affected employees must follow objective criteria.\n\n**Key Rules:**\n* **LIFO (Last In, First Out) Principle:** Senior workers must be retained in preference to junior workers within the same category.\n* **Code of Conduct for Industrial Harmony 1975:** Outlines guidelines such as consultative meetings, limiting foreign labor retention over local citizens, and giving adequate redundancy notices.\n\nI have retrieved Award **042 of 2026 (Tan Kok Seng & 14 Others v. Eastern Manufacturing Berhad)** which highlights a scenario where retrenchment was declared invalid due to LIFO violation. Review the parchment viewer for details.`;
-        loadDocumentIntoViewer(SAMPLE_AWARDS[2]);
-      } else if (q.includes("probation") || q.includes("probationer")) {
-        triggerAgentToolflowLog('search_tool', { keyword_summary: "probationer" });
-        reply = `### Probationer Dismissal Standards\n\nIn Malaysia, while probationers do not enjoy the exact same status as permanent employees, they still possess identical rights under Section 20(3) to not be dismissed without just cause or excuse.\n\n**Key Standard:**\nIn **Khaliah binti Abbas v. Majid Holdings Sdn Bhd [1997]**, it was affirmed that a probationer's services cannot be terminated whimsically. They must be given feedback, evaluated reasonably, and notified of failures to perform before termination.\n\n*Statutory cap on backwages for probationers is 12 months, compared to 24 months for permanent workers.* I have loaded Case **088 of 2026 (Vimala Devi v. Premier Healthcare Group)** into the viewer.`;
-        loadDocumentIntoViewer(SAMPLE_AWARDS[3]);
-      } else {
-        // Fallback natural language search simulation
-        reply = `I have received your query: "${userMsg}". \n\nI am analyzing this and performing a semantic search across our RAG database containing Malaysian Industrial Court decisions. Let me parse this and retrieve matching records...`;
-        
-        setTimeout(() => {
-          // Auto-trigger search simulation
-          setSearchForm(prev => ({ ...prev, claimant_or_union: userMsg }));
-          handleRunSearch();
-        }, 800);
-        
-        setChatMessages(prev => [...prev, {
-          id: `fallback-res-${Date.now()}`,
-          sender: 'agent',
-          text: reply,
-          timestamp: new Date()
-        }]);
-        setIsAgentTyping(false);
-        return;
-      }
-
-      setChatMessages(prev => [...prev, {
-        id: `agent-res-${Date.now()}`,
-        sender: 'agent',
-        text: reply,
-        timestamp: new Date()
-      }]);
-      setIsAgentTyping(false);
-    }, 1200);
-  }  // Set default view document on load
+  // Initialize with empty document viewer, awaiting user actions
   useEffect(() => {
-    loadDocumentIntoViewer(SAMPLE_AWARDS[0]);
+    setViewedDocumentTitle("Parchment Award Viewer");
+    setViewedDocumentMarkdown("");
   }, []);
 
   const renderDocumentViewer = (isDraftingTab: boolean) => {
@@ -1043,30 +814,6 @@ Pursuant to the **Second Schedule of the Industrial Relations Act 1967**:
                     </button>
                   </form>
 
-                  {/* Preset Quick Loader */}
-                  <div className="mt-4 pt-3 border-t border-slate-100">
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Test RAG Database Presets</span>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => loadSearchPreset(0)}
-                        className="text-[10px] bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-2 py-1 rounded transition-colors"
-                      >
-                        Ahmad Razali (Performance)
-                      </button>
-                      <button
-                        onClick={() => loadSearchPreset(1)}
-                        className="text-[10px] bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-2 py-1 rounded transition-colors"
-                      >
-                        Sarah Jenkins (Constructive)
-                      </button>
-                      <button
-                        onClick={() => loadSearchPreset(2)}
-                        className="text-[10px] bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-2 py-1 rounded transition-colors"
-                      >
-                        Tan Kok Seng (Retrenchment)
-                      </button>
-                    </div>
-                  </div>
 
                 </div>
               </div>
@@ -1265,30 +1012,6 @@ Pursuant to the **Second Schedule of the Industrial Relations Act 1967**:
                     </button>
                   </form>
 
-                  {/* Draft Presets */}
-                  <div className="mt-4 pt-3 border-t border-slate-100">
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Inject Reference Case Data</span>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => loadDraftPreset(0)}
-                        className="text-[10px] bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-2 py-1 rounded transition-colors"
-                      >
-                        Ahmad Razali
-                      </button>
-                      <button
-                        onClick={() => loadDraftPreset(1)}
-                        className="text-[10px] bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-2 py-1 rounded transition-colors"
-                      >
-                        Sarah Jenkins
-                      </button>
-                      <button
-                        onClick={() => loadDraftPreset(2)}
-                        className="text-[10px] bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 px-2 py-1 rounded transition-colors"
-                      >
-                        Tan Kok Seng
-                      </button>
-                    </div>
-                  </div>
 
                 </div>
               </div>
