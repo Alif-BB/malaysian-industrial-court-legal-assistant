@@ -5,8 +5,11 @@ Powered by google-adk (Google Agent Development Kit) and Gemini.
 
 from typing import Optional, List
 import os
+from functools import cached_property
 from pydantic import BaseModel, Field
 from google.adk import Agent
+from google.adk.models.google_llm import Gemini
+from google.genai import Client
 from google.genai import types
 from google.api_core.client_options import ClientOptions
 from google.cloud import discoveryengine_v1 as discoveryengine
@@ -63,7 +66,7 @@ def search_industrial_awards(criteria: SearchCriteria) -> str:
     If the project or data store configuration is missing, it returns a descriptive configuration guide.
     """
     project_id = os.getenv("GCP_PROJECT_ID")
-    location = os.getenv("GCP_LOCATION", "global")
+    location = os.getenv("VERTEX_SEARCH_LOCATION", os.getenv("GCP_LOCATION", "global"))
     data_store_id = os.getenv("VERTEX_SEARCH_DATA_STORE_ID")
     serving_config_id = "default_search"
 
@@ -291,6 +294,137 @@ Operational Rules:
 - Always respond in clear Markdown. Make legal citations bold or italicized.
 """
 
+# Custom Gemini client subclass to force the use of a regional endpoint (e.g., us-central1)
+# and ensure we do not hit locations/global (which is invalid for LLM API calls).
+class RegionalGemini(Gemini):
+    @cached_property
+    def api_client(self) -> Client:
+        # Explicitly configure enterprise mode, regional endpoint, and project ID
+        return Client(
+            enterprise=True,
+            project=os.getenv("GCP_PROJECT_ID"),
+            location=os.getenv("GCP_LOCATION", "us-central1")
+        )
+
+    async def generate_content_async(self, llm_request, stream: bool = False):
+        import logging
+        logger = logging.getLogger("RegionalGemini")
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:
+            ch = logging.StreamHandler()
+            ch.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            logger.addHandler(ch)
+
+        logger.info("RegionalGemini: generate_content_async called!")
+        logger.info(f"Model: {llm_request.model}")
+        if llm_request.config:
+            try:
+                logger.info(f"Config: {llm_request.config.model_dump(exclude_none=True)}")
+            except Exception as e:
+                logger.info(f"Config dump failed: {e}. Raw config: {llm_request.config}")
+        else:
+            logger.info("Config is None")
+        
+        # Clean up contents to ensure strict alternation of user/model roles (Vertex AI constraint)
+        if llm_request.contents:
+            from google.genai import types
+            
+            def get_part_text(p) -> str:
+                if hasattr(p, 'text') and p.text:
+                    return p.text
+                if isinstance(p, dict) and 'text' in p and p['text']:
+                    return p['text']
+                return ""
+
+            cleaned_contents = []
+            for content in llm_request.contents:
+                # Consolidate multiple text parts within the same content first
+                if content.parts:
+                    text_segments = []
+                    other_parts = []
+                    for part in content.parts:
+                        txt = get_part_text(part)
+                        if txt:
+                            text_segments.append(txt)
+                        else:
+                            other_parts.append(part)
+                    if len(text_segments) > 1:
+                        consolidated_text = "\n\n".join(text_segments)
+                        content.parts = [types.Part.from_text(text=consolidated_text)] + other_parts
+
+                if not cleaned_contents:
+                    cleaned_contents.append(content)
+                    continue
+                
+                prev_content = cleaned_contents[-1]
+                if content.role == prev_content.role:
+                    logger.info(f"RegionalGemini: Merging consecutive '{content.role}' content in history cleanup.")
+                    
+                    prev_texts = []
+                    prev_others = []
+                    for part in (prev_content.parts or []):
+                        txt = get_part_text(part)
+                        if txt:
+                            prev_texts.append(txt)
+                        else:
+                            prev_others.append(part)
+                            
+                    curr_texts = []
+                    curr_others = []
+                    for part in (content.parts or []):
+                        txt = get_part_text(part)
+                        if txt:
+                            curr_texts.append(txt)
+                        else:
+                            curr_others.append(part)
+                            
+                    all_texts = prev_texts + curr_texts
+                    all_others = prev_others + curr_others
+                    
+                    merged_parts = []
+                    if all_texts:
+                        merged_parts.append(types.Part.from_text(text="\n\n".join(all_texts)))
+                    merged_parts.extend(all_others)
+                    
+                    prev_content.parts = merged_parts
+                else:
+                    cleaned_contents.append(content)
+            
+            # Stripping thought_signature from all parts of contents (Vertex AI payload validation constraint)
+            for content in llm_request.contents:
+                if content.parts:
+                    for part in content.parts:
+                        if hasattr(part, 'thought_signature'):
+                            try:
+                                part.thought_signature = None
+                            except Exception:
+                                pass
+                        elif isinstance(part, dict) and 'thought_signature' in part:
+                            part['thought_signature'] = None
+            
+            llm_request.contents = cleaned_contents
+
+        if llm_request.contents:
+            try:
+                logger.info(f"Contents count: {len(llm_request.contents)}")
+                for idx, c in enumerate(llm_request.contents):
+                    logger.info(f"Content {idx}: {c.model_dump(exclude_none=True)}")
+            except Exception as e:
+                logger.info(f"Contents dump failed: {e}. Raw contents: {llm_request.contents}")
+        else:
+            logger.info("Contents is None")
+
+        try:
+            async for resp in super().generate_content_async(llm_request, stream):
+                yield resp
+        except Exception as e:
+            logger.error(f"RegionalGemini failed with exception: {e}", exc_info=True)
+            raise e
+
+
+# Use our customized RegionalGemini model
+model_instance = RegionalGemini(model="gemini-2.5-flash")
+
 # Instantiate the Agent using the Google ADK configuration convention
 IndustrialCourtAgent = Agent(
     name="industrial_court_agent",
@@ -300,7 +434,7 @@ IndustrialCourtAgent = Agent(
         search_industrial_awards,
         generate_industrial_court_template
     ],
-    model="gemini-2.5-flash",
+    model=model_instance,
     generate_content_config=types.GenerateContentConfig(
         temperature=0.2
     )

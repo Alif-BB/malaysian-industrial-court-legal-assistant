@@ -23,7 +23,8 @@ import {
   ChevronRight,
   Database,
   HelpCircle,
-  FileCheck
+  FileCheck,
+  MessageSquare
 } from 'lucide-react';
 
 // =====================================================================
@@ -195,26 +196,51 @@ const PYTHON_README = `# Malaysian Industrial Court Legal Assistant (Google ADK 
 
 This repository contains a production-grade prototype boilerplate for the **Malaysian Industrial Court Legal Assistant**, built using the open-source **Google Agent Development Kit (ADK)** and powered by **Gemini 2.5 Pro**.
 
+## 🏛️ Architecture Overview
+The assistant connects three core layers:
+1. **Frontend UI (React/Vite):** A premium web workspace on port \`3000\`.
+2. **ADK Agent Backend (Python/ADK):** Runs on port \`8082\` via \`adk web --port 8082 .\`.
+3. **Vertex AI Search Companion (FastAPI):** A fast proxy on port \`8083\` for GCS PDF streaming and searching.
+
 ## 🚀 Step-by-Step Setup Instructions
 
-### 1. Prerequisite & Local Environment Setup
-Ensure you have **Python 3.10+** installed on your workstation.
-
+### 1. Local Environment Setup
 \`\`\`bash
+# Backend Setup
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+
+# Frontend Setup
+npm install
 \`\`\`
 
-### 2. Configure API Keys
+### 2. Configure API Keys & GCP Authentication
 \`\`\`bash
-export GEMINI_API_KEY="your-gemini-api-key-here"
+gcloud auth application-default login
 \`\`\`
 
-### 3. Spin Up the Local ADK Developer Web UI
+### 3. Start All 3 Services
+Open three separate terminals and run:
+
+**Terminal 1 (ADK Agent Backend):**
 \`\`\`bash
-adk web start --agent agent:IndustrialCourtAgent --port 8080
-\`\`\``;
+source venv/bin/activate
+adk web --port 8082 .
+\`\`\`
+
+**Terminal 2 (Search Companion Server):**
+\`\`\`bash
+source venv/bin/activate
+python search_server.py
+\`\`\`
+
+**Terminal 3 (Vite Frontend):**
+\`\`\`bash
+npm run dev
+\`\`\`
+
+Access the assistant at **http://localhost:3000**!`;
 
 
 // =====================================================================
@@ -223,7 +249,21 @@ adk web start --agent agent:IndustrialCourtAgent --port 8080
 
 export default function App() {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'search' | 'drafting' | 'code'>('search');
+  const [activeTab, setActiveTab] = useState<'search' | 'consultant' | 'drafting' | 'code'>('search');
+
+  interface DirectSearchResult {
+    id: string;
+    title: string;
+    uri: string;
+    snippets: string[];
+  }
+
+  const [directResults, setDirectResults] = useState<DirectSearchResult[]>([]);
+  const [isSearchingDirect, setIsSearchingDirect] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [copiedUriId, setCopiedUriId] = useState<string | null>(null);
+  const [previewPdfUri, setPreviewPdfUri] = useState<string | null>(null);
+
   
   // Search Criteria Form State (Core Feature 1)
   const [searchForm, setSearchForm] = useState<SearchCriteria>({
@@ -238,7 +278,6 @@ export default function App() {
 
   // Natural Language Search Parser Input State
   const [naturalLanguageQuery, setNaturalLanguageQuery] = useState('');
-  const [isParsingNL, setIsParsingNL] = useState(false);
 
   // Template Drafting Form State (Core Feature 2)
   const [draftForm, setDraftForm] = useState({
@@ -267,7 +306,7 @@ export default function App() {
     {
       id: 'welcome',
       sender: 'agent',
-      text: "Selamat Sejahtera and welcome to the Malaysian Industrial Court Legal Assistant.\n\nI am an agent configured via the **Google ADK** (Agent Development Kit). I am equipped with tools to search past court awards synced from Google Drive via **Vertex AI RAG Engine**, and to generate standard legal drafts of court awards under Section 20(3) of the Industrial Relations Act 1967.\n\nHow can I assist you today? You can search past precedents or provide case details to draft a formal Court Award.",
+      text: "Selamat Sejahtera and welcome to the Malaysian Industrial Court Legal Assistant.\n\nI am your AI legal assistant. I am equipped to search past Malaysian Industrial Court awards, and to generate standard legal drafts under Section 20(3) of the Industrial Relations Act 1967.\n\nHow can I assist you today? You can search past precedents or provide case details to draft a formal Court Award.",
       timestamp: new Date()
     }
   ]);
@@ -337,29 +376,30 @@ export default function App() {
       const stepLogs: ChatMessage[] = [];
 
       for (const event of events) {
-        // Log function call executions (ADK Tool flow)
+        // Log function call executions
         if (event.content?.parts?.[0]?.functionCall) {
           const fc = event.content.parts[0].functionCall;
+          let logLabel = "Searching Database";
+          let logMsg = `Searching past court awards matching the query:`;
+          if (fc.name === 'generate_industrial_court_template') {
+            logLabel = "Generating Draft";
+            logMsg = `Generating formal court award draft template...`;
+          }
           stepLogs.push({
             id: `log-fc-${Date.now()}-${Math.random()}`,
             sender: 'system_log',
-            text: `[ADK TOOL INVOKE] Triggered function '${fc.name}' with parsed criteria:`,
+            text: `[${logLabel}] ${logMsg}`,
             timestamp: new Date(),
             metadata: { tool_name: fc.name, parameters: fc.args }
           });
         }
 
-        // Log function responses (ADK Tool results)
+        // Log function responses
         if (event.content?.parts?.[0]?.functionResponse) {
-          const fr = event.content.parts[0].functionResponse;
-          const resultText = typeof fr.response?.result === 'string'
-            ? fr.response.result
-            : JSON.stringify(fr.response?.result);
-
           stepLogs.push({
             id: `log-fr-${Date.now()}-${Math.random()}`,
             sender: 'system_log',
-            text: `[ADK Tool Output] Successfully fetched data store records matching query.`,
+            text: `[Database Retrieval] Successfully fetched matching court case records.`,
             timestamp: new Date()
           });
         }
@@ -409,7 +449,7 @@ export default function App() {
         setChatMessages(prev => [...prev, {
           id: `agent-res-empty-${Date.now()}`,
           sender: 'agent',
-          text: "I completed the run successfully but no text response was returned. This may mean the RAG database search executed successfully. Check the execution logs above.",
+          text: "The search executed successfully. Please review the matching court results retrieved above.",
           timestamp: new Date()
         }]);
       }
@@ -419,7 +459,7 @@ export default function App() {
       setChatMessages(prev => [...prev, {
         id: `agent-error-${Date.now()}`,
         sender: 'agent',
-        text: `### ⚠️ Connection to ADK Server Failed\n\nUnable to communicate with the local legal assistant backend at \`http://127.0.0.1:8082\`.\n\n**Details:** ${error.message}\n\n**To resolve this:**\n1. Make sure the ADK FastAPI server is running locally on port \`8082\`.\n2. Ensure your terminal is authenticated to Google Cloud by running:\n   \`gcloud auth application-default login\`\n3. Verify your \`.env\` file has valid GCS Data Store and GCP Project IDs configured correctly.`,
+        text: `### ⚠️ Connection to Legal Assistant Server Failed\n\nUnable to communicate with the local legal assistant backend at \`http://127.0.0.1:8082\`.\n\n**Details:** ${error.message}\n\n**To resolve this:**\n1. Make sure the backend server is running locally on port \`8082\`.\n2. Ensure your terminal is authenticated to Google Cloud by running:\n   \`gcloud auth application-default login\`\n3. Verify your \`.env\` file has valid GCS Data Store and GCP Project IDs configured correctly.`,
         timestamp: new Date()
       }]);
     } finally {
@@ -427,42 +467,40 @@ export default function App() {
     }
   };
 
-  // Natural Language Search Parser Input Handler
-  const handleNaturalLanguageParse = () => {
-    if (!naturalLanguageQuery.trim()) return;
-    setIsParsingNL(true);
-
-    const promptText = `Find Malaysian Industrial Court awards in the Vertex AI Search database matching this natural language request: "${naturalLanguageQuery}". Use the search tool to extract matching awards.`;
+  // Run direct high-speed search calling companion port 8083 Vertex AI Search
+  const runDirectSearch = async (nlpQuery?: string) => {
+    setIsSearchingDirect(true);
+    setSearchError(null);
     
-    // Set search form criteria field to indicate parsing activity
-    setSearchForm(prev => ({ ...prev, keyword_summary: naturalLanguageQuery }));
-    
-    setTimeout(() => {
-      setIsParsingNL(false);
-      runAgentQuery(promptText);
-    }, 600);
-  };
+    try {
+      const response = await fetch('http://127.0.0.1:8083/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: nlpQuery !== undefined ? nlpQuery : searchForm.keyword_summary,
+          claimant_or_union: searchForm.claimant_or_union || undefined,
+          respondent: searchForm.respondent || undefined,
+          case_year: searchForm.case_year || undefined,
+          case_code: searchForm.case_code || undefined,
+          award_number: searchForm.award_number || undefined,
+        })
+      });
 
-  // Run Real Search via GCS Synced Data Store
-  const handleRunSearch = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+      if (!response.ok) {
+        throw new Error(`Direct search companion server responded with status: ${response.status}`);
+      }
 
-    // Construct structured prompt for ADK agent to parse into SearchCriteria
-    const criteriaParts: string[] = [];
-    if (searchForm.claimant_or_union) criteriaParts.push(`Claimant/Union Name is "${searchForm.claimant_or_union}"`);
-    if (searchForm.respondent) criteriaParts.push(`Respondent Name is "${searchForm.respondent}"`);
-    if (searchForm.award_number) criteriaParts.push(`Award Number is "${searchForm.award_number}"`);
-    if (searchForm.case_number) criteriaParts.push(`Case Number is "${searchForm.case_number}"`);
-    if (searchForm.case_year) criteriaParts.push(`Case Year is "${searchForm.case_year}"`);
-    if (searchForm.keyword_summary) criteriaParts.push(`Keywords are "${searchForm.keyword_summary}"`);
-
-    const criteriaString = criteriaParts.length > 0 
-      ? criteriaParts.join(", ") 
-      : "general Malaysian industrial relations";
-
-    const promptText = `Search the Malaysian Industrial Court award database using the search tool for cases matching these specific parameters: ${criteriaString}. Present the retrieved passage snippets and their court titles clearly in your final response.`;
-    
-    runAgentQuery(promptText);
+      const data = await response.json();
+      setDirectResults(data.results || []);
+    } catch (error: any) {
+      console.error("Direct search error:", error);
+      setSearchError(error.message || "Failed to query the direct search companion server.");
+      setDirectResults([]);
+    } finally {
+      setIsSearchingDirect(false);
+    }
   };
 
   // Run Real Generative Award Drafting
@@ -610,51 +648,63 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs uppercase tracking-widest text-court-gold-light font-bold">Industrial Court of Malaysia</span>
-                <span className="bg-court-gold/20 text-court-gold-light text-[10px] px-2 py-0.5 rounded font-mono">ADK Blueprint v1.0</span>
+                <span className="bg-court-gold/20 text-court-gold-light text-[10px] px-2 py-0.5 rounded font-mono">Assistant v1.0</span>
               </div>
               <h1 className="text-xl md:text-2xl font-serif font-bold text-white tracking-wide">
-                Legal Assistant Agent Dashboard
+                Legal Assistant Dashboard
               </h1>
             </div>
           </div>
 
           {/* Navigation Control Tabs */}
-          <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700 w-full md:w-auto" id="nav-tabs-container">
+          <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700 w-full md:w-auto overflow-x-auto" id="nav-tabs-container">
             <button
               id="btn-tab-search"
               onClick={() => setActiveTab('search')}
-              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition-all ${
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition-all whitespace-nowrap ${
                 activeTab === 'search' 
                   ? 'bg-court-gold text-court-navy shadow font-bold' 
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
               }`}
             >
               <Search className="w-4 h-4" />
-              Precedent RAG Search
+              Search Past Case Awards
+            </button>
+            <button
+              id="btn-tab-consultant"
+              onClick={() => setActiveTab('consultant')}
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition-all whitespace-nowrap ${
+                activeTab === 'consultant' 
+                  ? 'bg-court-gold text-court-navy shadow font-bold' 
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              AI Legal Consultant
             </button>
             <button
               id="btn-tab-drafting"
               onClick={() => setActiveTab('drafting')}
-              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition-all ${
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition-all whitespace-nowrap ${
                 activeTab === 'drafting' 
                   ? 'bg-court-gold text-court-navy shadow font-bold' 
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
               }`}
             >
               <FileText className="w-4 h-4" />
-              Generative Award Drafting
+              Draft Court Award
             </button>
             <button
               id="btn-tab-code"
               onClick={() => setActiveTab('code')}
-              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition-all ${
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-xs font-semibold uppercase tracking-wider transition-all whitespace-nowrap ${
                 activeTab === 'code' 
                   ? 'bg-court-gold text-court-navy shadow font-bold' 
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
               }`}
             >
               <Code2 className="w-4 h-4" />
-              Python ADK Code Explorer
+              ADK Code Explorer
             </button>
           </div>
 
@@ -667,20 +717,20 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col gap-6" id="dashboard-main-content">
         
         {activeTab === 'search' ? (
-          <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full" id="search-grid-layout">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-7xl mx-auto w-full animate-fadeIn" id="search-grid-layout">
             
             {/* COLUMN 1: INTERACTIVE CONTROL PANEL */}
-            <div className="w-full flex flex-col gap-6" id="col-search-controls">
+            <div className="lg:col-span-5 flex flex-col gap-6" id="col-search-controls">
               
               {/* CORE FEATURE 1: MULTI-CRITERIA SEARCH CONTROL */}
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden" id="card-multi-criteria-search">
                 <div className="bg-slate-900 text-white p-4 border-b border-slate-800 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Search className="w-5 h-5 text-court-gold-light" />
-                    <h2 className="font-serif font-bold text-base text-slate-100">1. Multi-Criteria Search Tool</h2>
+                    <h2 className="font-serif font-bold text-base text-slate-100">Precedent Search Finder</h2>
                   </div>
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-mono">
-                    search_industrial_awards()
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded font-sans font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span> Case Database Connected
                   </span>
                 </div>
 
@@ -690,7 +740,7 @@ export default function App() {
                   <div className="mb-4">
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-court-gold" />
-                      Parser: Natural Language Search Query
+                      AI Natural Language Search
                     </label>
                     <div className="relative">
                       <input
@@ -702,22 +752,22 @@ export default function App() {
                       />
                       <button
                         type="button"
-                        onClick={handleNaturalLanguageParse}
-                        disabled={isParsingNL}
+                        onClick={() => runDirectSearch(naturalLanguageQuery)}
+                        disabled={isSearchingDirect}
                         className="absolute right-1.5 top-1.5 bg-court-navy hover:bg-slate-800 text-white text-xs font-semibold px-3 py-1 rounded-md transition-colors disabled:opacity-50 flex items-center gap-1"
                       >
-                        {isParsingNL ? (
-                          <span className="animate-pulse">Parsing...</span>
+                        {isSearchingDirect ? (
+                          <span className="animate-pulse">Searching...</span>
                         ) : (
                           <>
                             <Sparkles className="w-3 h-3 text-court-gold-light" />
-                            AI Parse
+                            Search
                           </>
                         )}
                       </button>
                     </div>
                     <p className="text-[10px] text-slate-500 mt-1">
-                      Gemini parses natural language queries into a structured Pydantic object before tool execution.
+                      Type your request in plain English to automatically find past court files.
                     </p>
                   </div>
 
@@ -725,11 +775,11 @@ export default function App() {
                     <div className="absolute inset-0 flex items-center">
                       <div className="w-full border-t border-slate-200"></div>
                     </div>
-                    <span className="relative bg-white px-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest">Parsed Pydantic Fields</span>
+                    <span className="relative bg-white px-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest">Specific Search Filters</span>
                   </div>
 
                   {/* Step B: Structured Pydantic Form */}
-                  <form onSubmit={handleRunSearch} className="space-y-3.5">
+                  <form onSubmit={(e) => { e.preventDefault(); runDirectSearch(); }} className="space-y-3.5">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">Claimant Name / Union</label>
@@ -795,7 +845,7 @@ export default function App() {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Semantic Keywords (RAG Engine Search)</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Legal Issues & Specific Keywords</label>
                       <input
                         type="text"
                         placeholder="e.g. LIFO standard, constructive dismissal Wong Chee Hong..."
@@ -807,24 +857,182 @@ export default function App() {
 
                     <button
                       type="submit"
-                      className="w-full bg-court-gold hover:bg-amber-600 text-court-navy text-xs font-bold uppercase tracking-wider py-2.5 rounded-lg shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      disabled={isSearchingDirect}
+                      className="w-full bg-court-gold hover:bg-amber-600 disabled:opacity-50 text-court-navy text-xs font-bold uppercase tracking-wider py-2.5 rounded-lg shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <Search className="w-4 h-4" />
-                      Search Google Drive RAG Engine
+                      {isSearchingDirect ? "Searching Database..." : "Search Court Award Database"}
                     </button>
                   </form>
-
 
                 </div>
               </div>
 
             </div>
 
-            {/* COLUMN 2: CHAT CONSOLE & PARCHMENT VIEW */}
-            <div className="w-full flex flex-col gap-6" id="col-search-outputs">
+            {/* COLUMN 2: DIRECT SEARCH RESULTS */}
+            <div className="lg:col-span-7 flex flex-col gap-6" id="col-search-results">
               
-              {/* INTERACTIVE AGENT CHAT & ORCHESTRATION LOGS */}
-              <div className="bg-slate-900 rounded-xl shadow-md border border-slate-800 flex flex-col h-[520px] overflow-hidden" id="card-chat-interface">
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col flex-1 min-h-[400px]" id="card-direct-search-results">
+                <div className="bg-slate-900 text-white p-4 border-b border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Database className="w-5 h-5 text-court-gold-light" />
+                    <h2 className="font-serif font-bold text-base text-slate-100">Direct Search Results</h2>
+                  </div>
+                  <span className="text-[10px] bg-court-gold/20 text-court-gold-light border border-court-gold/30 px-2 py-1 rounded font-sans font-semibold">
+                    Vertex AI Index Service
+                  </span>
+                </div>
+
+                <div className="p-5 flex-1 flex flex-col gap-4 overflow-y-auto max-h-[700px]">
+                  {isSearchingDirect ? (
+                    <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-500 gap-3">
+                      <div className="w-10 h-10 border-4 border-court-navy border-t-court-gold rounded-full animate-spin"></div>
+                      <p className="text-xs font-mono animate-pulse">Querying Vertex AI index (bypassing LLM)...</p>
+                    </div>
+                  ) : searchError ? (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 text-xs flex gap-3 items-start">
+                      <ShieldAlert className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="font-bold mb-1">Direct Search Connection Failed</h4>
+                        <p className="mb-2">{searchError}</p>
+                        <ol className="list-decimal pl-4 space-y-1 font-sans text-[11px] text-red-700">
+                          <li>Ensure the companion FastAPI server is running on port <code className="bg-red-100 px-1 py-0.5 rounded font-mono font-bold">8083</code>:</li>
+                          <li className="list-none my-1 font-mono bg-slate-900 text-slate-100 p-1.5 rounded text-[10px] overflow-x-auto select-all">python search_server.py</li>
+                          <li>Verify that your GCP environment is authenticated and your Search Data Store is configured properly.</li>
+                        </ol>
+                      </div>
+                    </div>
+                  ) : directResults.length > 0 ? (
+                    <div className="flex flex-col gap-4 animate-fadeIn">
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        Found <strong className="text-slate-800">{directResults.length}</strong> highly matching precedent awards from the Malaysian Industrial Court database.
+                      </p>
+                      
+                      {directResults.map((result, idx) => {
+                        const isCopied = copiedUriId === result.id;
+                        const handleCopyUri = () => {
+                          navigator.clipboard.writeText(result.uri);
+                          setCopiedUriId(result.id);
+                          setTimeout(() => setCopiedUriId(null), 2000);
+                        };
+
+                        return (
+                          <div key={result.id || idx} className="bg-slate-50 hover:bg-slate-100/70 border border-slate-200 hover:border-slate-300 rounded-lg p-4 transition-all flex flex-col gap-3 group relative">
+                            <div className="flex justify-between items-start gap-4">
+                              <div>
+                                <span className="text-[9px] bg-court-navy/10 text-court-navy font-semibold px-2 py-0.5 rounded uppercase tracking-wider">
+                                  Award Precedent #{idx + 1}
+                                </span>
+                                <h3 className="font-serif font-bold text-sm text-slate-900 mt-1 hover:text-court-navy transition-colors">
+                                  {result.title}
+                                </h3>
+                              </div>
+                              
+                              <div className="flex gap-2 shrink-0">
+                                <button
+                                  onClick={() => setPreviewPdfUri(result.uri)}
+                                  className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-300 hover:border-court-navy text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm text-court-navy font-bold transition-all cursor-pointer"
+                                  title="Preview PDF document inline"
+                                >
+                                  <BookOpen className="w-3.5 h-3.5 text-court-navy animate-pulse" />
+                                  Preview PDF
+                                </button>
+                                <a
+                                  href={`http://127.0.0.1:8083/pdf?uri=${encodeURIComponent(result.uri)}`}
+                                  download
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 hover:border-emerald-600 text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm text-emerald-800 font-semibold transition-all"
+                                  title="Download GCS PDF to workstation"
+                                >
+                                  <Download className="w-3.5 h-3.5 text-emerald-600" />
+                                  Download PDF
+                                </a>
+                                <button
+                                  onClick={handleCopyUri}
+                                  className="flex items-center gap-1 bg-white hover:bg-slate-50 border border-slate-300 text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm text-slate-700 font-semibold transition-all cursor-pointer"
+                                  title="Copy GCS path"
+                                >
+                                  {isCopied ? (
+                                    <>
+                                      <Check className="w-3 h-3 text-green-600 font-bold" />
+                                      Copied
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3 h-3 text-slate-500" />
+                                      Copy GCS URI
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Snippets / Matching Passages */}
+                            <div className="bg-[#FAF9F5] border border-[#E5E2D9] rounded-lg p-3.5 space-y-3 shadow-inner">
+                              <span className="text-[10px] uppercase font-mono tracking-wider text-court-gold font-bold block">
+                                Matching Precedent Excerpt
+                              </span>
+                              {result.snippets.map((snippet, sIdx) => (
+                                <div key={sIdx} className="text-xs text-slate-700 leading-relaxed text-justify font-sans relative pl-3.5 border-l-2 border-court-gold text-justify leading-relaxed">
+                                  {snippet.split('**').map((part, pIdx) => 
+                                    pIdx % 2 === 1 ? <strong key={pIdx} className="text-slate-950 font-extrabold bg-amber-100 px-1 py-0.5 rounded border border-amber-200/40">{part}</strong> : part
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Direct PDF Link footer */}
+                            {result.uri && (
+                              <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 mt-1">
+                                <Database className="w-3.5 h-3.5 text-slate-400" />
+                                <span className="truncate select-all max-w-[280px] md:max-w-md" title={result.uri}>
+                                  {result.uri}
+                                </span>
+                                {result.uri.startsWith('http') ? (
+                                  <a
+                                    href={result.uri}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-0.5 text-court-navy hover:text-amber-600 font-semibold uppercase tracking-wider ml-auto text-[9px]"
+                                  >
+                                    View PDF
+                                    <ExternalLink className="w-2.5 h-2.5" />
+                                  </a>
+                                ) : (
+                                  <span className="text-[9px] text-slate-400 italic ml-auto uppercase font-sans">
+                                    Stored in GCS
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center py-24 text-slate-400">
+                      <Search className="w-12 h-12 stroke-1 mb-2 text-slate-300" />
+                      <h4 className="font-serif font-bold text-sm text-slate-600 mb-1">No Search Executed</h4>
+                      <p className="text-xs max-w-sm text-slate-500">
+                        Use the Search Precedent Finder on the left to instantly query the Vertex AI Search database. Matches will display here in real-time.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        ) : activeTab === 'consultant' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-7xl mx-auto w-full animate-fadeIn" id="consultant-grid-layout">
+            
+            {/* COLUMN 1: INTERACTIVE AGENT CHAT & ORCHESTRATION LOGS */}
+            <div className="lg:col-span-6 flex flex-col gap-6" id="col-consultant-chat">
+              
+              <div className="bg-slate-900 rounded-xl shadow-md border border-slate-800 flex flex-col h-[630px] overflow-hidden" id="card-chat-interface">
                 
                 {/* Header */}
                 <div className="bg-slate-950 p-4 border-b border-slate-850 flex items-center justify-between">
@@ -836,14 +1044,14 @@ export default function App() {
                       <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full border border-slate-950 animate-ping"></span>
                     </div>
                     <div>
-                      <h3 className="font-serif font-bold text-sm text-slate-100">IndustrialCourtAgent Console</h3>
-                      <span className="text-[10px] text-slate-400 font-mono">Status: Connected to Google ADK framework</span>
+                      <h3 className="font-serif font-bold text-sm text-slate-100">AI Legal Consultant</h3>
+                      <span className="text-[10px] text-slate-400 font-mono">Status: Connected to Legal Assistant Backend</span>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <Database className="w-4 h-4 text-slate-500" />
-                    <span className="text-[10px] text-slate-400 font-mono">Google Drive Synced</span>
+                    <span className="text-[10px] text-slate-400 font-mono">Verified Case Database</span>
                   </div>
                 </div>
 
@@ -875,7 +1083,7 @@ export default function App() {
                             ? 'bg-slate-850 text-slate-200 border border-slate-800' 
                             : 'bg-court-navy text-white border border-slate-800'
                         }`}>
-                          <div className="whitespace-pre-wrap">{msg.text}</div>
+                          <div className="whitespace-pre-wrap text-justify leading-relaxed">{msg.text}</div>
                           <span className="block text-[9px] text-slate-500 mt-2 text-right">
                             {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
@@ -893,7 +1101,7 @@ export default function App() {
                         <span className="w-2 h-2 bg-court-gold rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
                         <span className="w-2 h-2 bg-court-gold rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
                         <span className="w-2 h-2 bg-court-gold rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                        <span className="text-[10px] font-mono text-slate-500 ml-1">Agent reasoning...</span>
+                        <span className="text-[10px] font-mono text-slate-500 ml-1">Consultant reasoning...</span>
                       </div>
                     </div>
                   )}
@@ -919,9 +1127,11 @@ export default function App() {
 
               </div>
 
-              {/* DOCUMENT VIEW (Parchment Styled Render) */}
-              {renderDocumentViewer(false)}
+            </div>
 
+            {/* COLUMN 2: DOCUMENT VIEW (Parchment Styled Render) */}
+            <div className="lg:col-span-6 flex flex-col gap-6" id="col-consultant-parchment">
+              {renderDocumentViewer(true)}
             </div>
 
           </div>
@@ -936,10 +1146,10 @@ export default function App() {
                 <div className="bg-slate-900 text-white p-4 border-b border-slate-800 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileText className="w-5 h-5 text-court-gold-light" />
-                    <h2 className="font-serif font-bold text-base text-slate-100">2. Generative Court Template Tool</h2>
+                    <h2 className="font-serif font-bold text-base text-slate-100">Case Award Drafting Helper</h2>
                   </div>
-                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded font-mono">
-                    generate_court_template()
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-1 rounded font-sans font-semibold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse"></span> Standard Legal Format
                   </span>
                 </div>
 
@@ -1179,6 +1389,64 @@ export default function App() {
       </main>
 
       {/* =====================================================================
+          LIVE PDF PREVIEW MODAL OVERLAY
+          ===================================================================== */}
+      {previewPdfUri && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6" id="pdf-preview-modal">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden animate-scaleIn">
+            
+            {/* Modal Header */}
+            <div className="bg-court-navy text-white px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-court-gold p-1.5 rounded-lg text-court-navy">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-sm md:text-base text-white">Court Award Document Preview</h3>
+                  <p className="text-[10px] text-slate-400 font-mono truncate max-w-[280px] md:max-w-md" title={previewPdfUri}>
+                    {previewPdfUri}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href={`http://127.0.0.1:8083/pdf?uri=${encodeURIComponent(previewPdfUri)}`}
+                  download
+                  className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3.5 py-2 rounded-md shadow-sm transition-all"
+                >
+                  <Download className="w-4 h-4" />
+                  Download PDF
+                </a>
+                <button
+                  onClick={() => setPreviewPdfUri(null)}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold px-3 py-2 rounded-md transition-all cursor-pointer"
+                >
+                  Close Preview
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Iframe Content */}
+            <div className="flex-1 bg-slate-100 relative">
+              <iframe
+                src={`http://127.0.0.1:8083/pdf?uri=${encodeURIComponent(previewPdfUri)}`}
+                className="w-full h-full border-none"
+                title="GCS PDF Native Browser Viewer"
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 px-5 py-2.5 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 font-sans">
+              <span>Notice: Preview is rendered securely via our FastAPI local proxy server.</span>
+              <span className="font-mono">Port 8083 GCS Proxy Stream</span>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
           FOOTER
           ===================================================================== */}
       <footer className="bg-slate-900 border-t border-slate-850 py-6 mt-12 px-4" id="app-footer">
@@ -1188,7 +1456,7 @@ export default function App() {
             <span>Malaysian Industrial Court Legal Assistant Prototype Blueprint</span>
           </div>
           <div>
-            Powered by <strong className="text-slate-300">Google Agent Development Kit (ADK)</strong> & <strong className="text-slate-300">Gemini 2.5 Pro</strong>
+            Powered by <strong className="text-slate-300">Google Cloud AI</strong> & <strong className="text-slate-300">Gemini</strong>
           </div>
         </div>
       </footer>
