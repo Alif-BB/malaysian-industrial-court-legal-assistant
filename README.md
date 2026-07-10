@@ -56,36 +56,47 @@ gcloud auth application-default login
 # Ensure GCP_PROJECT_ID and VERTEX_SEARCH_DATA_STORE_ID match your Google Cloud variables.
 ```
 
-### 3. Running the Project (Start All 3 Services)
+### 3. Running the Project
 
-To run the complete workspace, open **three terminal windows/tabs** and execute:
+You can start **all 3 services simultaneously** using a single command. We have prepared two convenient ways to do this:
+
+#### ⚡ Option A: NPM Script (Recommended - Beautiful Multi-Color Terminal Logs)
+This uses `concurrently` to run everything in a single shell, interleaving logs with beautifully colored prefixes for each service:
+```bash
+npm start
+```
+
+#### 🐚 Option B: Native Bash Script (Graceful Process Termination)
+Runs all services in the background and gracefully stops everything when you hit `Ctrl+C`:
+```bash
+./start.sh
+```
+
+---
+
+### 🛠️ Advanced: Manual Service Start (Multi-Terminal)
+If you prefer running services in separate tabs for focused debugging:
 
 #### 🖥️ Terminal 1: Start ADK Agent Backend (Port 8082)
-
-The Google ADK server handles agent orchestration and tool routing.
-
 ```bash
 source venv/bin/activate
 adk web --port 8082 --allow_origins "*" .
 ```
 
 #### 🔍 Terminal 2: Start Search Companion API Server (Port 8083)
-
-FastAPI handles direct document lookups and streams court PDFs.
-
 ```bash
 source venv/bin/activate
 python search_server.py
 ```
 
 #### 🎨 Terminal 3: Start React/Vite Frontend (Port 3000)
-
-Vite serves the high-fidelity UI.
-
 ```bash
 npm run dev
 ```
 
+---
+
+### 🌍 Open in Browser
 Now open **`http://localhost:3000`** in your browser to interact with the Legal Assistant.
 
 ---
@@ -163,6 +174,18 @@ def search_industrial_awards(criteria: SearchCriteria) -> str:
     
     return "\n\n---\n\n".join(results)
 ```
+
+---
+
+## 🔐 Service Account & Vertex AI Authentication
+
+Rather than using generic public developer API keys, this project is built for secure, enterprise-grade authentication using a **Google Cloud Service Account** connected directly to **Vertex AI**:
+
+* **Custom Regional Model Client:** Implemented inside `agent.py` as `RegionalGemini` (extending ADK's `GoogleLLM`) to route all requests strictly to GCP Vertex AI in `us-central1` using the `analytics-team-testing` project ID.
+* **CORS-Aware Preflight Routing:** Resolves cross-origin preflight `OPTIONS` requests seamlessly by running ADK with the `--allow_origins "*"` flag.
+* **Strict Multi-Turn Sanitization:** Automatically cleanses conversation histories inside `RegionalGemini.generate_content_async` to:
+  1. Merge consecutive messages of the same role (collapsing multi-user turns into single text structures to satisfy strict Vertex AI alternation requirements).
+  2. Strip non-input fields such as `thought_signature` from history payloads, completely eliminating any possibility of `400 INVALID_ARGUMENT` payload rejections.
 
 ---
 
